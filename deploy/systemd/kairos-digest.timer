@@ -3,7 +3,7 @@ Description=Run KAIROS digest every 2 hours
 
 [Timer]
 OnBootSec=10min
-OnUnitActiveSec=2h
+OnUnitActiveSec=1h
 AccuracySec=1min
 
 [Install]

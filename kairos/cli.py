@@ -248,6 +248,14 @@ def _cmd_stream(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_digest(_args: argparse.Namespace) -> int:
+    from .data import store
+    from .report import digest_text
+
+    print(digest_text(store.connect()))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="kairos", description="Perp funding/basis RV research harness")
     p.add_argument("--demo", action="store_true", help="use Kalshi demo host + demo creds")
@@ -305,6 +313,9 @@ def main(argv: list[str] | None = None) -> int:
     st.add_argument("--symbols", nargs="*", default=None, help="perp tickers (default: liquid set)")
     st.add_argument("--seconds", type=float, default=None, help="auto-stop after N seconds")
     st.set_defaults(func=_cmd_stream)
+
+    dg = sub.add_parser("digest", help="print the rich health + signal digest (Slack digest job uses this)")
+    dg.set_defaults(func=_cmd_digest)
 
     args = p.parse_args(argv)
     return args.func(args)
