@@ -123,9 +123,15 @@ def hist_means(conn, asset: str) -> pd.DataFrame:
     return g[["venue", "mean_apr_%", "std_apr_%", "count"]].sort_values("mean_apr_%", ascending=False)
 
 
-def backfill_hist(conn, assets: list[str] | None = None, limit: int = 500) -> dict[str, int]:
-    """Backfill offshore historical funding into venue_funding_hist. Returns per-venue counts."""
+def backfill_hist(conn, assets: list[str] | None = None, limit: int = 500,
+                  hl_days: int = 21) -> dict[str, int]:
+    """Backfill offshore historical funding into venue_funding_hist. Returns per-venue counts.
+
+    Hyperliquid's fundingHistory returns up to 500 records FORWARD from startTime, so to get
+    RECENT (not 2023-launch) data we anchor startTime ~hl_days back (hourly -> ~500 recs ≈ 21d
+    ending near now)."""
     assets = assets or list(ASSET_MAP)
+    hl_start = int((time.time() - hl_days * 86400) * 1000)
     counts = {"okx": 0, "bitget": 0, "gate": 0, "hyperliquid": 0}
     for asset in assets:
         m = ASSET_MAP.get(asset)
@@ -135,7 +141,7 @@ def backfill_hist(conn, assets: list[str] | None = None, limit: int = 500) -> di
             ("okx", offshore.okx_history(m["okx"], limit=min(limit, 100))),
             ("bitget", offshore.bitget_history(m["bitget"], limit=min(limit, 100))),
             ("gate", offshore.gate_history(m["gate"], limit=limit)),
-            ("hyperliquid", offshore.hyperliquid_history(m["hyperliquid"], start_ms=0)),
+            ("hyperliquid", offshore.hyperliquid_history(m["hyperliquid"], start_ms=hl_start)),
         ):
             counts[venue] += store.upsert_venue_funding_hist(conn, [{**r, "asset": asset} for r in recs])
     return counts
