@@ -1,0 +1,9 @@
+[Unit]
+Description=KAIROS dead-man's-switch (alerts #kairos-deadman)
+
+[Service]
+Type=oneshot
+User=kairos
+Group=kairos
+EnvironmentFile=/etc/kairos/kairos.env
+ExecStart=/opt/kairos/deploy/deadman.sh

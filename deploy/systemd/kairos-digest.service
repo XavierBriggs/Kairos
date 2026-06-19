@@ -1,0 +1,9 @@
+[Unit]
+Description=KAIROS health + data digest (posts #kairos-digest)
+
+[Service]
+Type=oneshot
+User=kairos
+Group=kairos
+EnvironmentFile=/etc/kairos/kairos.env
+ExecStart=/opt/kairos/deploy/digest.sh

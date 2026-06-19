@@ -1,0 +1,26 @@
+# KAIROS forward-capture — systemd unit (host-portable; deploy on any always-on Linux box).
+#
+# Runs the `collect` loop at 60s cadence (the rich + L2 @ 60s capture). Read-only: only
+# GET requests; never places/cancels orders. Edit User/paths for the deploy host, then:
+#   sudo cp scripts/kairos-collect.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now kairos-collect
+#   journalctl -u kairos-collect -f
+#
+# (On macOS use launchd or just `nohup ./.venv/bin/kairos collect --interval 60 &`.)
+
+[Unit]
+Description=KAIROS Kalshi perp forward-capture (read-only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/home/ec2-user/fortuna/docs/kairos
+ExecStart=/home/ec2-user/fortuna/docs/kairos/.venv/bin/kairos collect --interval 60
+Restart=on-failure
+RestartSec=15
+# creds resolved from <repo>/.env via config.py; no secrets in this unit.
+
+[Install]
+WantedBy=multi-user.target

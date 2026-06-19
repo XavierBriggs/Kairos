@@ -1,0 +1,14 @@
+# KAIROS forward-capture — cron example (host-portable; deploy wherever).
+#
+# Single-shot `kairos poll` per minute. Idempotent (UNIQUE(symbol, poll_ts)), so an
+# occasional overlap never double-counts. Adjust the absolute paths for the deploy host.
+# For sub-minute cadence use the `collect` loop (systemd unit) instead — cron is 1/min min.
+#
+# crontab -e, then:
+
+* * * * * cd /Users/xavierbriggs/fortuna/docs/kairos && ./.venv/bin/kairos poll >> /Users/xavierbriggs/fortuna/data/kairos/poll.log 2>&1
+
+# Notes:
+#  - creds (KALSHI_API_KEY_ID + KALSHI_PRIVATE_KEY_PATH) are read from <repo>/.env.
+#  - read-only: `poll` only issues GET requests; it never places or cancels orders.
+#  - check progress any time:  ./.venv/bin/kairos db-status

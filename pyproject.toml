@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kairos"
+version = "0.0.1"
+description = "Perp funding-rate / basis relative-value research harness for FORTUNA"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+    "cryptography>=42.0",   # RSA-PSS request signing for the read-only Kalshi client
+    "websocket-client>=1.7", # signed read-only WS streaming (tick-level mark/funding/book)
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "ruff>=0.4"]
+
+[project.scripts]
+kairos = "kairos.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["kairos*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

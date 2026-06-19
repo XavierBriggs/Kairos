@@ -1,0 +1,11 @@
+[Unit]
+Description=KAIROS retention (ws_tick->1m rollup, disk-pressure ws_book prune, vacuum)
+
+[Service]
+Type=oneshot
+User=kairos
+Group=kairos
+EnvironmentFile=/etc/kairos/kairos.env
+ExecStart=/opt/kairos/deploy/prune.sh
+ProtectSystem=strict
+ReadWritePaths=/data

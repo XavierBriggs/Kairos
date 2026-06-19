@@ -1,0 +1,29 @@
+[Unit]
+Description=KAIROS REST collector (60s poll: Kalshi snapshot+tape + cross-venue funding)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=kairos
+Group=kairos
+WorkingDirectory=/opt/kairos
+EnvironmentFile=/etc/kairos/kairos.env
+ExecStart=/opt/kairos/venv/bin/kairos collect --interval 60
+Restart=always
+RestartSec=5
+SyslogIdentifier=kairos-collect
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/data
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target
