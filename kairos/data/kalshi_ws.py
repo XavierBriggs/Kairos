@@ -98,7 +98,7 @@ def stream(tickers: list[str], demo: bool = False, channels: tuple[str, ...] = (
     signer = _load_signer(demo)
     headers = signer.headers("GET", _WS_PATH) if signer else {}
     url = host or (_WS_DEMO if demo else _WS_PROD)
-    conn = connect(db_path())
+    conn = connect(db_path(), autocommit=True)  # tiny per-write txns -> never lock-starve the collector
     print(f"KAIROS stream: {url}  channels={list(channels)}  tickers={len(tickers)}  signed={signer is not None}")
     t_start = time.time()
     backoff = 0.5

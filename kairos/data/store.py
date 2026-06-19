@@ -138,11 +138,15 @@ CREATE INDEX IF NOT EXISTS idx_wstick1m ON ws_tick_1m(symbol, minute_ts);
 """
 
 
-def connect(path: Path | str | None = None) -> sqlite3.Connection:
+def connect(path: Path | str | None = None, autocommit: bool = False) -> sqlite3.Connection:
     p = Path(path) if path else db_path()
     new = not p.exists()
     p.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(p), timeout=10.0)
+    # autocommit (isolation_level=None) for the high-frequency WS stream: each write is its
+    # own tiny transaction, so it never holds an open write lock across many inserts and
+    # starve the 60s collector ("database is locked"). The collector keeps "" (deferred +
+    # explicit commit). busy_timeout is generous because both writers share one DB.
+    conn = sqlite3.connect(str(p), timeout=15.0, isolation_level=(None if autocommit else ""))
     conn.row_factory = sqlite3.Row
     # auto_vacuum must be set BEFORE the first table is created (fresh DB) to enable
     # incremental_vacuum reclaim after retention pruning.
@@ -150,7 +154,7 @@ def connect(path: Path | str | None = None) -> sqlite3.Connection:
         conn.execute("PRAGMA auto_vacuum=INCREMENTAL")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA busy_timeout=5000")   # two writers (collect + stream) share this DB
+    conn.execute("PRAGMA busy_timeout=15000")
     init_schema(conn)
     return conn
 
