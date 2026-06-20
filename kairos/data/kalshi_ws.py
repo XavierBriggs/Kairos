@@ -20,6 +20,7 @@ from .store import connect, insert_ws_book, insert_ws_tick
 _WS_PROD = "wss://external-api-margin-ws.kalshi.com/trade-api/ws/v2/margin"
 _WS_DEMO = "wss://external-api-margin-ws.demo.kalshi.co/trade-api/ws/v2/margin"
 _WS_PATH = "/trade-api/ws/v2/margin"
+_STALE_SECS = 90   # force a reconnect if no market data arrives for this long (half-open/keepalive-only)
 
 
 def _num(x):
@@ -93,7 +94,7 @@ def stream(tickers: list[str], demo: bool = False, channels: tuple[str, ...] = (
 
     Capped-exponential reconnect (0.5s -> 30s). Read-only — subscribe only.
     """
-    from websocket import create_connection  # websocket-client
+    from websocket import WebSocketTimeoutException, create_connection  # websocket-client
 
     signer = _load_signer(demo)
     headers = signer.headers("GET", _WS_PATH) if signer else {}
@@ -109,19 +110,32 @@ def stream(tickers: list[str], demo: bool = False, channels: tuple[str, ...] = (
             return
         try:
             ws = create_connection(url, header=[f"{k}: {v}" for k, v in headers.items()], timeout=30)
+            ws.settimeout(20)  # bounded recv so the data-staleness watchdog below can run
             ws.send(_subscribe_cmd(tickers, list(channels)))
             backoff = 0.5
+            last_data = time.time()
             while True:
                 if max_seconds and time.time() - t_start > max_seconds:
                     ws.close()
                     print(f"stream done: {n_tick} ticks, {n_book} book rows")
                     return
-                kind, payload = parse_message(ws.recv(), int(time.time() * 1000))
+                # watchdog: a half-open / keepalive-only socket stays "alive" at TCP level while
+                # market data silently stops and recv() blocks forever -> force a reconnect.
+                if time.time() - last_data > _STALE_SECS:
+                    ws.close()
+                    raise TimeoutError(f"no market data for {_STALE_SECS}s")
+                try:
+                    raw = ws.recv()
+                except WebSocketTimeoutException:
+                    continue  # no frame in 20s; the staleness check forces a reconnect if it persists
+                kind, payload = parse_message(raw, int(time.time() * 1000))
                 if kind == "tick" and payload.get("symbol"):
                     if insert_ws_tick(conn, payload):
                         n_tick += 1
+                    last_data = time.time()
                 elif kind == "book" and payload:
                     n_book += insert_ws_book(conn, payload)
+                    last_data = time.time()
                 if (n_tick + n_book) % 50 == 0 and (n_tick + n_book) > 0:
                     conn.commit()
         except KeyboardInterrupt:
