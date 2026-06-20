@@ -13,10 +13,19 @@ Graded for funding/basis RV use. Re-validate before trusting on a fast-moving ve
 | **OKX** | ✅ | ✅ + premium+interest (8h) | ✅ (premium direct) | ✅ (100/call) | — | **A** | core offshore |
 | **Bitget** | ✅ | ✅ + interval field (8h) | ✅ index+last | ✅ | — | **B+** | breadth |
 | **Gate** | ✅ | ✅ realized (8h) | ✅ index+last | ✅ | — | **B** | breadth |
-| **Binance** | ❌ **451 geo-block** | ✅ (8h) | ✅ | ✅ deepest | — | **D from US** | non-US host only |
-| **Bybit** | ❌ **403 geo-block** | ✅ (8h) | ✅ | ✅ | — | **D from US** | non-US host only |
+| **Binance** (direct) | ❌ **451 geo-block US/AWS** | ✅ (8h) | ✅ | ✅ deepest | — | **D direct** | now wired via CoinGecko (live) |
+| **Bybit** (direct) | ❌ **403 geo-block US/AWS** | ✅ (8h) | ✅ | ✅ | — | **D direct** | now wired via CoinGecko (live) |
+| **CoinGecko `/derivatives`** | ✅ **keyless** | ✅ Binance+Bybit current (8h; % → fraction, /100) | ✅ price + index | ❌ **live-only (no history)** | — | **B** | vendor → Binance+Bybit (wired 2026-06-20) |
 
-Also reachable from US (not yet wired): dYdX, Kraken Futures, KuCoin Futures (all 200, funding present).
+Also reachable from US, not wired: dYdX, Kraken Futures, KuCoin Futures (all 200, funding present).
+
+**Update 2026-06-20:** Binance + Bybit added to the live cross-venue set via the **CoinGecko
+`/derivatives`** vendor (keyless, US/AWS-reachable — verified HTTP 200 from the EC2 box). Their
+direct futures APIs geo-block US/AWS, so the vendor is the path. `funding_rate` there is in
+**percent/8h** (÷100 → fraction); basis is recomputed from `price` vs `index` for consistency.
+**Live-only** — CoinGecko has no free funding *history*, so Binance/Bybit are excluded from the
+historical backfill/carry analysis until their forward-captured `venue_funding` history is deep
+enough. Cross-venue live set is now **7 venues**.
 
 ## Validation findings (what's true, grounded in live data)
 
