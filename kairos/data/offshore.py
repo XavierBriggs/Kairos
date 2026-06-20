@@ -227,3 +227,31 @@ def bybit_history(symbol: str = "BTCUSDT", limit: int = 200, interval_hours: flo
     return [{"venue": "bybit", "symbol": symbol,
              "funding_time": int(_f(r.get("fundingRateTimestamp")) or 0),
              "funding_rate": _f(r.get("fundingRate")), "interval_hours": interval_hours} for r in rows]
+
+
+# --- CoinGecko vendor: Binance + Bybit funding (their DIRECT APIs geo-block US) ------
+# Keyless, US-reachable; one /derivatives call returns current funding for every venue.
+# CoinGecko's funding_rate is in PERCENT/8h (so /100 -> fraction); basis is recomputed from
+# price vs index for consistency with the other adapters. LIVE-only (no history endpoint here).
+_CG = "https://api.coingecko.com/api/v3"
+_CG_MARKET = {"binance": "Binance (Futures)", "bybit": "Bybit (Futures)"}
+
+
+def coingecko_perps(assets: list[str]) -> dict[tuple[str, str], dict]:
+    """Funding for Binance/Bybit USDT perps via CoinGecko. Returns {(venue, asset): normalized}."""
+    try:
+        data = _get(f"{_CG}/derivatives")
+    except Exception:  # noqa: BLE001 - vendor down must not kill the round
+        return {}
+    want = {(_CG_MARKET[v], f"{a}USDT"): (v, a) for a in assets for v in _CG_MARKET}
+    out: dict[tuple[str, str], dict] = {}
+    for x in data:
+        key = (x.get("market"), x.get("symbol"))
+        if key in want and x.get("contract_type") == "perpetual":
+            venue, asset = want[key]
+            rate = _f(x.get("funding_rate"))
+            out[(venue, asset)] = _norm(
+                venue, f"{asset}USDT", rate / 100.0 if rate is not None else None, 8.0,
+                _f(x.get("price")), _f(x.get("index")), _f(x.get("open_interest")), None,
+                interest_rate=INTEREST_8H)
+    return out

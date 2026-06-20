@@ -55,9 +55,33 @@ def test_gate_uses_realized_funding_not_indicative(monkeypatch):
     assert r["basis_bps"] is not None
 
 
+def test_coingecko_normalizes_binance_bybit(monkeypatch):
+    sample = [
+        {"market": "Binance (Futures)", "symbol": "BTCUSDT", "contract_type": "perpetual",
+         "funding_rate": 0.004345, "price": "63955.0", "index": 63983.35, "open_interest": 6.3e9},
+        {"market": "Bybit (Futures)", "symbol": "BTCUSDT", "contract_type": "perpetual",
+         "funding_rate": 0.007846, "price": "63932.3", "index": 64029.59, "open_interest": 3.3e9},
+        {"market": "Binance (Futures)", "symbol": "ETHUSDT", "contract_type": "perpetual",
+         "funding_rate": 0.003208, "price": "1734.0", "index": 1735.73, "open_interest": 3.8e9},
+        {"market": "Other (Futures)", "symbol": "BTCUSDT", "contract_type": "perpetual",
+         "funding_rate": 9, "price": "1", "index": 1},   # not Binance/Bybit -> ignored
+    ]
+    monkeypatch.setattr(offshore, "_get", lambda url, params=None: sample)
+    out = offshore.coingecko_perps(["BTC", "ETH"])
+    b = out[("binance", "BTC")]
+    assert b["venue"] == "binance" and b["interval_hours"] == 8.0
+    assert abs(b["funding_rate"] - 0.004345 / 100) < 1e-12               # PERCENT -> fraction
+    assert abs(b["basis_bps"] - ((63955.0 - 63983.35) / 63983.35 * 1e4)) < 1e-3  # ~ -4.43 bp
+    assert b["funding_apr"] is not None and b["interest_rate"] == offshore.INTEREST_8H
+    assert abs(out[("bybit", "BTC")]["funding_rate"] - 0.007846 / 100) < 1e-12
+    assert ("binance", "ETH") in out
+    assert ("binance", "SOL") not in out                                 # not present in feed
+
+
 def test_dead_venue_returns_none(monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("down")
     monkeypatch.setattr(offshore, "_get", boom)
     assert offshore.okx_live("BTC-USDT-SWAP") is None       # never raises -> round survives
     assert offshore.gate_history("BTC_USDT") == []
+    assert offshore.coingecko_perps(["BTC"]) == {}          # vendor down -> empty, round survives

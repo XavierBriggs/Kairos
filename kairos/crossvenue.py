@@ -31,7 +31,7 @@ ASSET_MAP: dict[str, dict[str, str]] = {
         "gate": f"{a}_USDT", "hyperliquid": a, "binance": f"{a}USDT", "bybit": f"{a}USDT"}
     for a in ("BTC", "ETH", "SOL", "XRP", "DOGE", "LTC", "LINK", "BCH")
 }
-US_VENUES = ("kalshi", "hyperliquid", "okx", "bitget", "gate")
+US_VENUES = ("kalshi", "hyperliquid", "okx", "bitget", "gate", "binance", "bybit")
 
 
 def _kalshi_row(client: KalshiPerpClient, asset: str, ticker: str, poll_ts: int) -> dict | None:
@@ -58,7 +58,8 @@ def collect_live(conn, client: KalshiPerpClient, assets: list[str] | None = None
     """One cross-venue funding round across `assets` (US-reachable venues). Idempotent."""
     poll_ts = int(time.time() * 1000)
     assets = assets or list(ASSET_MAP)
-    hl = offshore.hyperliquid_all()  # ALL coins in one call
+    hl = offshore.hyperliquid_all()         # ALL coins in one call
+    cg = offshore.coingecko_perps(assets)   # Binance + Bybit via vendor, one call (US geo-blocks direct)
     rows: list[dict] = []
     for asset in assets:
         m = ASSET_MAP.get(asset)
@@ -68,7 +69,9 @@ def collect_live(conn, client: KalshiPerpClient, assets: list[str] | None = None
                   offshore.okx_live(m["okx"]),
                   offshore.bitget_live(m["bitget"]),
                   offshore.gate_live(m["gate"]),
-                  hl.get(m["hyperliquid"])):
+                  hl.get(m["hyperliquid"]),
+                  cg.get(("binance", asset)),
+                  cg.get(("bybit", asset))):
             if r:
                 rows.append({**r, "asset": asset, "poll_ts": poll_ts})
     return store.insert_venue_funding(conn, rows)
