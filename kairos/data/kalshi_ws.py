@@ -97,7 +97,6 @@ def stream(tickers: list[str], demo: bool = False, channels: tuple[str, ...] = (
     from websocket import WebSocketTimeoutException, create_connection  # websocket-client
 
     signer = _load_signer(demo)
-    headers = signer.headers("GET", _WS_PATH) if signer else {}
     url = host or (_WS_DEMO if demo else _WS_PROD)
     conn = connect(db_path(), autocommit=True)  # tiny per-write txns -> never lock-starve the collector
     print(f"KAIROS stream: {url}  channels={list(channels)}  tickers={len(tickers)}  signed={signer is not None}")
@@ -109,6 +108,9 @@ def stream(tickers: list[str], demo: bool = False, channels: tuple[str, ...] = (
             print(f"stream done: {n_tick} ticks, {n_book} book rows")
             return
         try:
+            # Re-sign on EVERY connect: the RSA-PSS handshake timestamp goes stale, and Kalshi
+            # 401s a reused signature — reusing one signature 401-loops forever on reconnect.
+            headers = signer.headers("GET", _WS_PATH) if signer else {}
             ws = create_connection(url, header=[f"{k}: {v}" for k, v in headers.items()], timeout=30)
             ws.settimeout(20)  # bounded recv so the data-staleness watchdog below can run
             ws.send(_subscribe_cmd(tickers, list(channels)))
