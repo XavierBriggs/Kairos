@@ -99,9 +99,14 @@ chmod 600 /etc/kairos/kairos.env
 [ -f /etc/kairos/kalshi.pem ] && chmod 600 /etc/kairos/kalshi.pem
 chown -R kairos:kairos /etc/kairos
 
-echo "[7/9] systemd units"
+echo "[7/9] systemd units + auto-heal sudoers"
 cp /opt/kairos/deploy/systemd/*.service /opt/kairos/deploy/systemd/*.timer /etc/systemd/system/
 systemctl daemon-reload
+# Narrow sudoers rule so the deadman (kairos user) can restart the two collectors to self-heal.
+SYSTEMCTL="$(command -v systemctl)"
+sed "s#__SYSTEMCTL__#${SYSTEMCTL}#g" /opt/kairos/deploy/sudoers-kairos-heal > /etc/sudoers.d/kairos-heal
+chmod 0440 /etc/sudoers.d/kairos-heal
+visudo -cf /etc/sudoers.d/kairos-heal || { echo "FATAL: bad sudoers"; rm -f /etc/sudoers.d/kairos-heal; exit 1; }
 
 echo "[8/9] venue reachability smoke test"
 sudo -u kairos bash /opt/kairos/deploy/smoke-test.sh || true

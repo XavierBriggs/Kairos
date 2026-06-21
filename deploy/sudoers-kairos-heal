@@ -1,0 +1,7 @@
+# KAIROS auto-heal — let the dead-man's-switch (runs as the kairos user, oneshot, no tty)
+# restart the two collectors when it detects a stall/down. Narrow allowlist: ONLY these two
+# exact `systemctl restart` commands, nothing else. Installed to /etc/sudoers.d/kairos-heal
+# (mode 0440, validated with `visudo -cf`). The systemctl path is substituted by bootstrap
+# from `command -v systemctl` (AL2023 = /usr/bin/systemctl) so the command matches exactly.
+Defaults:kairos !requiretty
+kairos ALL=(root) NOPASSWD: __SYSTEMCTL__ restart kairos-stream, __SYSTEMCTL__ restart kairos-collect
