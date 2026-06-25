@@ -115,6 +115,9 @@ CREATE TABLE IF NOT EXISTS ws_tick (
     UNIQUE(symbol, recv_ts)
 );
 CREATE INDEX IF NOT EXISTS idx_wstick ON ws_tick(symbol, recv_ts);
+-- recv_ts-only index: the digest + prune scan ws_tick by recv_ts alone (no symbol), which
+-- the (symbol, recv_ts) composite cannot serve. recv_ts is monotonic so this appends cheaply.
+CREATE INDEX IF NOT EXISTS idx_wstick_recv ON ws_tick(recv_ts);
 
 CREATE TABLE IF NOT EXISTS ws_book (
     symbol TEXT NOT NULL,
@@ -123,6 +126,10 @@ CREATE TABLE IF NOT EXISTS ws_book (
     side TEXT, price REAL, delta REAL, is_snapshot INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_wsbook ON ws_book(symbol, recv_ts);
+-- recv_ts-only index: digest's "book rows last 1h" (COUNT WHERE recv_ts>?) and the prune
+-- DELETE both filter recv_ts WITHOUT a symbol, so the composite above is useless for them ->
+-- full 100M+ row scan (the ~10min digest). recv_ts is monotonic so maintenance is an append.
+CREATE INDEX IF NOT EXISTS idx_wsbook_recv ON ws_book(recv_ts);
 
 -- 1-minute rollup of ws_tick (top-of-book), kept INDEFINITELY as the compact long-term
 -- archive after raw ws_tick/ws_book are pruned. Populated by the deploy prune job.

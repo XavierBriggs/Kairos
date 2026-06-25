@@ -32,6 +32,10 @@ ASSET_MAP: dict[str, dict[str, str]] = {
     for a in ("BTC", "ETH", "SOL", "XRP", "DOGE", "LTC", "LINK", "BCH")
 }
 US_VENUES = ("kalshi", "hyperliquid", "okx", "bitget", "gate", "binance", "bybit")
+# Clean direct-API offshore venues for the index-offset tracker. Binance/Bybit are EXCLUDED:
+# their basis comes via the CoinGecko vendor (cached/lagged price vs index), so their basis_bps
+# is noise (we saw -49/-55bp artifacts) and would corrupt the offshore reference.
+_CLEAN_OFFSHORE = ("hyperliquid", "okx", "bitget", "gate")
 
 
 def _kalshi_row(client: KalshiPerpClient, asset: str, ticker: str, poll_ts: int) -> dict | None:
@@ -124,6 +128,40 @@ def hist_means(conn, asset: str) -> pd.DataFrame:
     g["mean_apr_%"] = (g["mean"] * 100).round(2)
     g["std_apr_%"] = (g["std"] * 100).round(2)
     return g[["venue", "mean_apr_%", "std_apr_%", "count"]].sort_values("mean_apr_%", ascending=False)
+
+
+def index_offset_daily(conn, asset: str, days: int = 14) -> pd.DataFrame:
+    """Daily Kalshi-minus-offshore BASIS offset for `asset` — the discriminator between a
+    STRUCTURAL index difference and lag/noise.
+
+    The live price test (2026-06-24) showed the cross-venue perp PRICES are ~equal while
+    Kalshi's INDEX reads ~10-15bp below the offshore oracles — so the "Kalshi rich vs offshore
+    cheap" funding gap is mostly an index-construction artifact, not a tradeable price gap.
+    Since the perps are ~co-priced, (kalshi_basis - offshore_basis) ≈ -(index offset) to first
+    order, and it is UNIT-FREE (no per-asset contract-scale needed). If this offset is STABLE
+    day-over-day it is a structural index difference (a small real carry may survive); if it
+    MEAN-REVERTS it is just lag/noise (no edge). Offshore = clean direct venues only.
+    """
+    cutoff = int((time.time() - days * 86400) * 1000)
+    placeholders = ",".join("?" for _ in _CLEAN_OFFSHORE)
+    df = pd.read_sql_query(
+        f"SELECT venue, poll_ts, basis_bps FROM venue_funding "
+        f"WHERE asset=? AND poll_ts>? AND basis_bps IS NOT NULL "
+        f"AND venue IN ('kalshi',{placeholders})",
+        conn, params=(asset, cutoff, *_CLEAN_OFFSHORE),
+    )
+    if df.empty:
+        return df
+    df["day"] = pd.to_datetime(df["poll_ts"], unit="ms").dt.strftime("%Y-%m-%d")
+    df["side"] = (df["venue"] == "kalshi").map({True: "kalshi", False: "offshore"})
+    g = df.groupby(["day", "side"])["basis_bps"].mean().unstack("side")
+    if "kalshi" not in g.columns or "offshore" not in g.columns:
+        return pd.DataFrame()
+    g = g.dropna(subset=["kalshi", "offshore"])
+    g["kalshi_bps"] = g["kalshi"].round(2)
+    g["offshore_bps"] = g["offshore"].round(2)
+    g["offset_bps"] = (g["kalshi"] - g["offshore"]).round(2)
+    return g.reset_index()[["day", "kalshi_bps", "offshore_bps", "offset_bps"]]
 
 
 def backfill_hist(conn, assets: list[str] | None = None, limit: int = 500,

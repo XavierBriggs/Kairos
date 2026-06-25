@@ -1,5 +1,7 @@
 """Cross-venue asset map + dispersion readout."""
-from kairos.crossvenue import ASSET_MAP, dispersion
+import time
+
+from kairos.crossvenue import ASSET_MAP, dispersion, index_offset_daily
 from kairos.data import store
 
 
@@ -41,3 +43,31 @@ def test_dispersion_uses_latest_poll(tmp_path):
                                       _vf("okx", 0.09, 8.0, 0.0001, poll_ts=2)])
     df = dispersion(conn, "BTC")
     assert len(df) == 1 and abs(df["funding_apr_%"].iloc[0] - 9.0) < 1e-6  # newest only
+
+
+def _vfo(venue, basis_bps, poll_ts, asset="XRP"):
+    return {"venue": venue, "symbol": f"{venue}-{asset}", "asset": asset, "poll_ts": poll_ts,
+            "funding_rate": 0.0, "interval_hours": 8.0, "funding_apr": 0.0, "interest_rate": 0.0,
+            "mark": None, "index_price": None, "basis_bps": basis_bps,
+            "open_interest": None, "next_funding_time": None}
+
+
+def test_index_offset_isolates_kalshi_and_excludes_vendor_venues(tmp_path):
+    conn = store.connect(tmp_path / "t.db")
+    now_ms = int(time.time() * 1000)
+    day = 86_400_000
+    rows = []
+    for d in (2, 1):  # two distinct days within the window
+        ts = now_ms - d * day
+        rows += [
+            _vfo("kalshi", 3.0, ts),         # Kalshi basis +3bp
+            _vfo("hyperliquid", -5.0, ts),   # clean offshore ~ -5bp
+            _vfo("okx", -5.0, ts),
+            _vfo("binance", -50.0, ts),      # CoinGecko-vendored noise -> MUST be excluded
+        ]
+    store.insert_venue_funding(conn, rows)
+    df = index_offset_daily(conn, "XRP", days=10)
+    assert len(df) == 2                                   # one row per day
+    # offset = kalshi(+3) - mean(hl,okx)=-5 = +8bp; binance -50 excluded (else it'd skew to ~ -20)
+    assert abs(df["offshore_bps"].iloc[-1] - (-5.0)) < 0.01
+    assert abs(df["offset_bps"].iloc[-1] - 8.0) < 0.01

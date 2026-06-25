@@ -14,7 +14,7 @@ import time
 
 from .config import BacktestConfig, db_path
 from .convergence import forward_edge
-from .crossvenue import ASSET_MAP, US_VENUES, dispersion
+from .crossvenue import ASSET_MAP, US_VENUES, dispersion, index_offset_daily
 from .data import store
 
 _IPY8 = 365 * 24 / 8  # 8h periods per year -> annualize a per-8h funding rate
@@ -126,6 +126,18 @@ def digest_text(conn) -> str:
         hi, lo = t.iloc[0], t.iloc[-1]
         out.append(f"x-venue premium (mech stripped) — widest: {a} {sp:.1f}% "
                    f"({hi['venue']} {hi['premium_apr_%']:+.1f} vs {lo['venue']} {lo['premium_apr_%']:+.1f})")
+
+    # --- Kalshi-vs-offshore index offset (is the "Kalshi rich" gap structural or noise?) ---
+    # The price test showed the perps are ~co-priced; the funding gap is an index-construction
+    # difference. Track its daily offset: STABLE => structural (small real carry); MEAN-REVERTING
+    # => lag/noise (no edge). This is the discriminator that decides if the signal is tradeable.
+    od = index_offset_daily(conn, "XRP", days=10)
+    if not od.empty and len(od) >= 2:
+        off = od["offset_bps"]
+        structural = off.std() < abs(off.mean()) * 0.5 and abs(off.mean()) > 1.0
+        out.append(f"XRP index offset (Kalshi−offshore basis): today {off.iloc[-1]:+.1f}bp · "
+                   f"{len(off)}d {off.mean():+.1f}±{off.std():.1f}bp · "
+                   f"{'structural' if structural else 'noisy/mean-reverting'}")
 
     # --- Kalshi funding cross-section (regime + extremes) --------------------
     rows = conn.execute("SELECT symbol, funding_est FROM snapshot s "

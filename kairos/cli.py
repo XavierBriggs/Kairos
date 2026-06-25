@@ -256,6 +256,26 @@ def _cmd_digest(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_index_offset(args: argparse.Namespace) -> int:
+    from .crossvenue import index_offset_daily
+    from .data import store
+
+    df = index_offset_daily(store.connect(), args.asset, days=args.days)
+    if df.empty or len(df) < 2:
+        print(f"not enough cross-venue basis history for {args.asset} yet.")
+        return 0
+    print(f"\n{args.asset} — daily Kalshi-minus-offshore basis offset "
+          "(structural index gap vs lag/noise):\n")
+    print(df.to_string(index=False))
+    off = df["offset_bps"]
+    # Stable sign + small std relative to the mean => a persistent (structural) index offset;
+    # a large std (mean-reverting around ~0) => just lag/measurement noise, no durable carry.
+    structural = off.std() < abs(off.mean()) * 0.5 and abs(off.mean()) > 1.0
+    print(f"\n  offset: mean {off.mean():+.1f}bp  std {off.std():.1f}bp  latest {off.iloc[-1]:+.1f}bp  "
+          f"-> {'STABLE / structural (small real carry may survive)' if structural else 'NOISY / mean-reverting (no durable edge)'}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="kairos", description="Perp funding/basis RV research harness")
     p.add_argument("--demo", action="store_true", help="use Kalshi demo host + demo creds")
@@ -316,6 +336,11 @@ def main(argv: list[str] | None = None) -> int:
 
     dg = sub.add_parser("digest", help="print the rich health + signal digest (Slack digest job uses this)")
     dg.set_defaults(func=_cmd_digest)
+
+    io = sub.add_parser("index-offset", help="daily Kalshi-vs-offshore index/basis offset (structural vs noise)")
+    io.add_argument("--asset", default="XRP", help="BTC/ETH/SOL/XRP/DOGE/LTC/LINK/BCH")
+    io.add_argument("--days", type=int, default=14, help="lookback window in days")
+    io.set_defaults(func=_cmd_index_offset)
 
     args = p.parse_args(argv)
     return args.func(args)
